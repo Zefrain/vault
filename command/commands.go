@@ -71,6 +71,8 @@ import (
 	sr "github.com/hashicorp/vault/serviceregistration"
 	csr "github.com/hashicorp/vault/serviceregistration/consul"
 	ksr "github.com/hashicorp/vault/serviceregistration/kubernetes"
+
+	physDM "github.com/hashicorp/vault/physical/dm8"
 )
 
 const (
@@ -211,6 +213,7 @@ var (
 		"swift":                  physSwift.NewSwiftBackend,
 		"raft":                   physRaft.NewRaftBackend,
 		"zookeeper":              physZooKeeper.NewZooKeeperBackend,
+		"dm":                     physDM.NewDMBackend,
 	}
 
 	serviceRegistrations = map[string]sr.Factory{

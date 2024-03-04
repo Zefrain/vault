@@ -28,6 +28,8 @@ import (
 	"github.com/hashicorp/vault/sdk/helper/salt"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/mitchellh/go-testing-interface"
+
+	dm "github.com/hashicorp/vault/plugins/database/dm8"
 )
 
 var externalPlugins = []string{"transform", "kmip", "keymgmt"}
@@ -91,8 +93,9 @@ func NewMockBuiltinRegistry() *mockBuiltinRegistry {
 				PluginType:        consts.PluginTypeCredential,
 				DeprecationStatus: consts.PendingRemoval,
 			},
-			"aws":    {PluginType: consts.PluginTypeCredential},
-			"consul": {PluginType: consts.PluginTypeSecrets},
+			"aws":                {PluginType: consts.PluginTypeCredential},
+			"consul":             {PluginType: consts.PluginTypeSecrets},
+			"dm-database-plugin": {PluginType: consts.PluginTypeDatabase},
 		},
 	}
 }
@@ -141,6 +144,8 @@ func (m *mockBuiltinRegistry) Get(name string, pluginType consts.PluginType) (fu
 		}), true
 	case "mysql-database-plugin":
 		return mysql.New(mysql.DefaultUserNameTemplate), true
+	case "dm-database-plugin":
+		return dm.New(dm.DefaultUserNameTemplate), true
 	case "consul":
 		return toFunc(func(ctx context.Context, config *logical.BackendConfig) (logical.Backend, error) {
 			b := new(framework.Backend)
@@ -180,6 +185,7 @@ func (m *mockBuiltinRegistry) Keys(pluginType consts.PluginType) []string {
 			"redshift-database-plugin",
 			"redis-database-plugin",
 			"snowflake-database-plugin",
+			"dm-database-plugin",
 		}
 	case consts.PluginTypeCredential:
 		return []string{

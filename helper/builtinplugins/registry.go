@@ -58,6 +58,8 @@ import (
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/consts"
 	"github.com/hashicorp/vault/sdk/logical"
+
+	dbDM "github.com/hashicorp/vault/plugins/database/dm8"
 )
 
 // Registry is inherently thread-safe because it's immutable.
@@ -137,6 +139,8 @@ func newRegistry() *registry {
 			"mysql-rds-database-plugin":    {Factory: dbMysql.New(dbMysql.DefaultLegacyUserNameTemplate)},
 			"mysql-legacy-database-plugin": {Factory: dbMysql.New(dbMysql.DefaultLegacyUserNameTemplate)},
 
+			"dm-database-plugin": {Factory: dbDM.New(dbDM.DefaultUserNameTemplate)},
+
 			"cassandra-database-plugin":         {Factory: dbCass.New},
 			"couchbase-database-plugin":         {Factory: dbCouchbase.New},
 			"elasticsearch-database-plugin":     {Factory: dbElastic.New},
@@ -196,6 +200,10 @@ func newRegistry() *registry {
 			"terraform": {Factory: logicalTerraform.Factory},
 			"totp":      {Factory: logicalTotp.Factory},
 			"transit":   {Factory: logicalTransit.Factory},
+			"dm": {
+				Factory:           removedFactory,
+				DeprecationStatus: consts.Removed,
+			},
 		},
 	}
 

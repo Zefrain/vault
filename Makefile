@@ -258,6 +258,9 @@ spellcheck:
 mysql-database-plugin:
 	@CGO_ENABLED=0 $(GO_CMD) build -o bin/mysql-database-plugin ./plugins/database/mysql/mysql-database-plugin
 
+dm-database-plugin:
+	@CGO_ENABLED=0 $(GO_CMD) build -o bin/dm-database-plugin ./plugins/database/dm8/dm-database-plugin
+
 mysql-legacy-database-plugin:
 	@CGO_ENABLED=0 $(GO_CMD) build -o bin/mysql-legacy-database-plugin ./plugins/database/mysql/mysql-legacy-database-plugin
 
@@ -316,3 +319,4 @@ ci-get-version-package:
 .PHONY: ci-prepare-legal
 ci-prepare-legal:
 	@$(CURDIR)/scripts/ci-helper.sh prepare-legal
+
