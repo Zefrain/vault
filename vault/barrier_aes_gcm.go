@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"gmsm/sm4"
 	"io"
 	"math"
 	"strconv"
@@ -45,6 +46,7 @@ const (
 const (
 	AESGCMVersion1 = 0x1
 	AESGCMVersion2 = 0x2
+	GMSM4Version1  = 0xf1
 )
 
 // barrierInit is the JSON encoded value stored
@@ -116,10 +118,11 @@ func (b *AESGCMBarrier) SetRotationConfig(ctx context.Context, rotConfig KeyRota
 // the provided physical backend for storage.
 func NewAESGCMBarrier(physical physical.Backend) (*AESGCMBarrier, error) {
 	b := &AESGCMBarrier{
-		backend:                  physical,
-		sealed:                   true,
-		cache:                    make(map[uint32]cipher.AEAD),
-		currentAESGCMVersionByte: byte(AESGCMVersion2),
+		backend: physical,
+		sealed:  true,
+		cache:   make(map[uint32]cipher.AEAD),
+		// currentAESGCMVersionByte: byte(AESGCMVersion2),
+		currentAESGCMVersionByte: byte(GMSM4Version1),
 		UnaccountedEncryptions:   atomic.NewInt64(0),
 		RemoteEncryptions:        atomic.NewInt64(0),
 		totalLocalEncryptions:    atomic.NewInt64(0),
@@ -1027,6 +1030,14 @@ func (b *AESGCMBarrier) encrypt(path string, term uint32, gcm cipher.AEAD, plain
 			aad = []byte(path)
 		}
 		out = gcm.Seal(out, nonce, plain, aad)
+	case GMSM4Version1:
+		iv := []byte(nil)
+		err = sm4.SetIV(iv)                         // 设置SM4算法实现的IV值,不设置则使用默认值
+		out, err = sm4.Sm4Ecb(out[:4], plain, true) // sm4Ecb模式pksc7填充加密
+		if err != nil {
+			err = fmt.Errorf("sm4 enc error:%s", err)
+		}
+
 	default:
 		panic("Unknown AESGCM version")
 	}
@@ -1063,6 +1074,16 @@ func (b *AESGCMBarrier) decrypt(path string, gcm cipher.AEAD, cipher []byte) ([]
 			aad = []byte(path)
 		}
 		return gcm.Open(out, nonce, raw, aad)
+	case GMSM4Version1:
+		iv := []byte(nil)
+		err := sm4.SetIV(iv)                    // 设置SM4算法实现的IV值,不设置则使用默认值
+		out, err = sm4.Sm4Ecb(nonce, raw, true) // sm4Ecb模式pksc7填充加密
+		if err != nil {
+			// fmt.Errorf("sm4 dec error:%s", err)
+			out, err = gcm.Open(out, nonce, raw, iv)
+			sm4.Sm4Ecb(nonce, raw, true)
+		}
+		return out, err
 	default:
 		return nil, fmt.Errorf("version bytes mis-match")
 	}
