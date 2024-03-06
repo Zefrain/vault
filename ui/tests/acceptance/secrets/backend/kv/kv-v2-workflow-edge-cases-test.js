@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) HashiCorp, Inc.
+ * SPDX-License-Identifier: BUSL-1.1
+ */
+
 import { module, test } from 'qunit';
 import { v4 as uuidv4 } from 'uuid';
 import { click, currentURL, fillIn, findAll, setupOnerror, typeIn, visit } from '@ember/test-helpers';
@@ -266,7 +271,7 @@ module('Acceptance | kv-v2 workflow | edge cases', function (hooks) {
     assert.dom(PAGE.list.item()).exists({ count: 2 }, 'two secrets are listed');
   });
 
-  test('complex values default to JSON display', async function (assert) {
+  test('advanced secret values default to JSON display', async function (assert) {
     await visit(`/vault/secrets/${this.backend}/kv/create`);
     await fillIn(FORM.inputByAttr('path'), 'complex');
 
@@ -278,6 +283,17 @@ module('Acceptance | kv-v2 workflow | edge cases', function (hooks) {
     await click(PAGE.detail.createNewVersion);
     assert.dom(FORM.toggleJson).isDisabled();
     assert.dom(FORM.toggleJson).isChecked();
+  });
+  test('does not register as advanced when value includes {', async function (assert) {
+    await visit(`/vault/secrets/${this.backend}/kv/create`);
+    await fillIn(FORM.inputByAttr('path'), 'not-advanced');
+
+    await fillIn(FORM.keyInput(), 'foo');
+    await fillIn(FORM.maskedValueInput(), '{bar}');
+    await click(FORM.saveBtn);
+    await click(PAGE.detail.createNewVersion);
+    assert.dom(FORM.toggleJson).isNotDisabled();
+    assert.dom(FORM.toggleJson).isNotChecked();
   });
 });
 
