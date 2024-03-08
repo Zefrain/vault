@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) HashiCorp, Inc.
+ * SPDX-License-Identifier: BUSL-1.1
+ */
+
 import { module, test } from 'qunit';
 import { v4 as uuidv4 } from 'uuid';
 import { click, currentURL, fillIn, findAll, setupOnerror, typeIn, visit } from '@ember/test-helpers';
@@ -266,7 +271,7 @@ module('Acceptance | kv-v2 workflow | edge cases', function (hooks) {
     assert.dom(PAGE.list.item()).exists({ count: 2 }, 'two secrets are listed');
   });
 
-  test('complex values default to JSON display', async function (assert) {
+  test('advanced secret values default to JSON display', async function (assert) {
     await visit(`/vault/secrets/${this.backend}/kv/create`);
     await fillIn(FORM.inputByAttr('path'), 'complex');
 
@@ -276,8 +281,57 @@ module('Acceptance | kv-v2 workflow | edge cases', function (hooks) {
     await click(FORM.saveBtn);
     // Future: test that json is automatic on details too
     await click(PAGE.detail.createNewVersion);
-    assert.dom(FORM.toggleJson).isDisabled();
+    assert.dom(FORM.toggleJson).isNotDisabled();
     assert.dom(FORM.toggleJson).isChecked();
+  });
+
+  test('viewing advanced secret data versions displays the correct version data', async function (assert) {
+    assert.expect(2);
+    const obscuredDataV1 = `{
+  "foo1": {
+    "name": "bar1"
+  }
+}`;
+    const obscuredDataV2 = `{
+  "foo2": {
+    "name": "bar2"
+  }
+}`;
+
+    await visit(`/vault/secrets/${this.backend}/kv/create`);
+    await fillIn(FORM.inputByAttr('path'), 'complex_version_test');
+
+    await click(FORM.toggleJson);
+    codemirror().setValue('{ "foo1": { "name": "bar1" } }');
+    await click(FORM.saveBtn);
+
+    // Create another version
+    await click(PAGE.detail.createNewVersion);
+    codemirror().setValue('{ "foo2": { "name": "bar2" } }');
+    await click(FORM.saveBtn);
+
+    // View the first version and make sure the secret data is correct
+    await click(PAGE.detail.versionDropdown);
+    await click(`${PAGE.detail.version(1)} a`);
+    await click(FORM.toggleJsonValues);
+    assert.strictEqual(codemirror().getValue(), obscuredDataV1, 'Version one data is displayed');
+
+    // Navigate back the second version and make sure the secret data is correct
+    await click(PAGE.detail.versionDropdown);
+    await click(`${PAGE.detail.version(2)} a`);
+    assert.strictEqual(codemirror().getValue(), obscuredDataV2, 'Version two data is displayed');
+  });
+
+  test('does not register as advanced when value includes {', async function (assert) {
+    await visit(`/vault/secrets/${this.backend}/kv/create`);
+    await fillIn(FORM.inputByAttr('path'), 'not-advanced');
+
+    await fillIn(FORM.keyInput(), 'foo');
+    await fillIn(FORM.maskedValueInput(), '{bar}');
+    await click(FORM.saveBtn);
+    await click(PAGE.detail.createNewVersion);
+    assert.dom(FORM.toggleJson).isNotDisabled();
+    assert.dom(FORM.toggleJson).isNotChecked();
   });
 });
 

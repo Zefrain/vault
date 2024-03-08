@@ -121,6 +121,26 @@ export const AVAILABLE_PLUGIN_TYPES = [
     ],
   },
   {
+    value: 'dm-database-plugin',
+    displayName: 'DM',
+    fields: [
+      { attr: 'plugin_name' },
+      { attr: 'name' },
+      { attr: 'verify_connection', show: false },
+      { attr: 'password_policy' },
+      { attr: 'connection_url', group: 'pluginConfig' },
+      { attr: 'username', group: 'pluginConfig', show: false },
+      { attr: 'password', group: 'pluginConfig', show: false },
+      { attr: 'max_open_connections', group: 'pluginConfig' },
+      { attr: 'max_idle_connections', group: 'pluginConfig' },
+      { attr: 'max_connection_lifetime', group: 'pluginConfig' },
+      { attr: 'username_template', group: 'pluginConfig' },
+      { attr: 'tls', group: 'pluginConfig', subgroup: 'TLS options' },
+      { attr: 'tls_ca', group: 'pluginConfig', subgroup: 'TLS options' },
+      { attr: 'root_rotation_statements', group: 'statements' },
+    ],
+  },
+  {
     value: 'mysql-rds-database-plugin',
     displayName: 'MySQL (RDS)',
     fields: [
@@ -195,6 +215,7 @@ export const STATEMENT_FIELDS = {
     'mysql-rds-database-plugin': [],
     'vault-plugin-database-oracle': [],
     'postgresql-database-plugin': [],
+    'dm-database-plugin': [],
   },
   dynamic: {
     default: ['creation_statements', 'revocation_statements', 'rollback_statements', 'renew_statements'],
@@ -212,6 +233,7 @@ export const STATEMENT_FIELDS = {
       'rollback_statements',
       'renew_statements',
     ],
+    'dm-database-plugin': ['creation_statements', 'revocation_statements'],
   },
 };
 

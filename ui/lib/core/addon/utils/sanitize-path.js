@@ -1,7 +1,18 @@
+/**
+ * Copyright (c) HashiCorp, Inc.
+ * SPDX-License-Identifier: BUSL-1.1
+ */
+
 export function sanitizePath(path) {
   if (!path) return '';
   //remove whitespace + remove trailing and leading slashes
   return path.trim().replace(/^\/+|\/+$/g, '');
+}
+
+export function sanitizeStart(path) {
+  if (!path) return '';
+  //remove leading slashes
+  return path.trim().replace(/^\/+/, '');
 }
 
 export function ensureTrailingSlash(path) {

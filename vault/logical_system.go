@@ -4670,6 +4670,8 @@ func (b *SystemBackend) pathInternalUIResultantACL(ctx context.Context, req *log
 		},
 	}
 
+	resp.Data["chroot_namespace"] = req.ChrootNamespace
+
 	if acl.root {
 		resp.Data["root"] = true
 		return resp, nil
@@ -6397,6 +6399,15 @@ This path responds to the following HTTP methods.
 This path responds to the following HTTP methods.
 		GET /
 			Returns the available and enabled experiments.
+		`,
+	},
+	"utilization": {
+		"This internal api will return manual license reporting report data.",
+		`
+This path responds to the following HTTP methods.
+
+	POST /
+		returns the manual license reporting data.
 		`,
 	},
 }

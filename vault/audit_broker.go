@@ -66,12 +66,14 @@ func (a *AuditBroker) Register(name string, b audit.Backend, local bool) error {
 	}
 
 	if a.broker != nil {
-		err := a.broker.SetSuccessThresholdSinks(eventlogger.EventType(event.AuditType.String()), 1)
+		// Attempt to register the pipeline before enabling 'broker level' enforcement
+		// of how many successful sinks we expect.
+		err := b.RegisterNodesAndPipeline(a.broker, name)
 		if err != nil {
 			return err
 		}
-
-		err = b.RegisterNodesAndPipeline(a.broker, name)
+		// Update the success threshold now that the pipeline is registered.
+		err = a.broker.SetSuccessThresholdSinks(eventlogger.EventType(event.AuditType.String()), 1)
 		if err != nil {
 			return err
 		}
@@ -164,17 +166,25 @@ func (a *AuditBroker) LogRequest(ctx context.Context, in *logical.LogInput, head
 	var retErr *multierror.Error
 
 	defer func() {
-		if r := recover(); r != nil {
-			a.logger.Error("panic during logging", "request_path", in.Request.Path, "error", r, "stacktrace", string(debug.Stack()))
-			retErr = multierror.Append(retErr, fmt.Errorf("panic generating audit log"))
-		}
+		if a.broker == nil {
+			if r := recover(); r != nil {
+				a.logger.Error("panic during logging", "request_path", in.Request.Path, "error", r, "stacktrace", string(debug.Stack()))
+				retErr = multierror.Append(retErr, fmt.Errorf("panic generating audit log"))
+			}
 
-		ret = retErr.ErrorOrNil()
-		failure := float32(0.0)
-		if ret != nil {
-			failure = 1.0
+			ret = retErr.ErrorOrNil()
+			failure := float32(0.0)
+			if ret != nil {
+				failure = 1.0
+			}
+			metrics.IncrCounter([]string{"audit", "log_request_failure"}, failure)
+		} else {
+			metricVal := float32(0.0)
+			if ret != nil {
+				metricVal = 1.0
+			}
+			metrics.IncrCounter([]string{"audit", "log_request_failure"}, metricVal)
 		}
-		metrics.IncrCounter([]string{"audit", "log_request_failure"}, failure)
 	}()
 
 	headers := in.Request.Headers
@@ -245,18 +255,25 @@ func (a *AuditBroker) LogResponse(ctx context.Context, in *logical.LogInput, hea
 	var retErr *multierror.Error
 
 	defer func() {
-		if r := recover(); r != nil {
-			a.logger.Error("panic during logging", "request_path", in.Request.Path, "error", r, "stacktrace", string(debug.Stack()))
-			retErr = multierror.Append(retErr, fmt.Errorf("panic generating audit log"))
-		}
+		if a.broker == nil {
+			if r := recover(); r != nil {
+				a.logger.Error("panic during logging", "request_path", in.Request.Path, "error", r, "stacktrace", string(debug.Stack()))
+				retErr = multierror.Append(retErr, fmt.Errorf("panic generating audit log"))
+			}
 
-		ret = retErr.ErrorOrNil()
-
-		failure := float32(0.0)
-		if ret != nil {
-			failure = 1.0
+			ret = retErr.ErrorOrNil()
+			failure := float32(0.0)
+			if ret != nil {
+				failure = 1.0
+			}
+			metrics.IncrCounter([]string{"audit", "log_response_failure"}, failure)
+		} else {
+			metricVal := float32(0.0)
+			if ret != nil {
+				metricVal = 1.0
+			}
+			metrics.IncrCounter([]string{"audit", "log_response_failure"}, metricVal)
 		}
-		metrics.IncrCounter([]string{"audit", "log_response_failure"}, failure)
 	}()
 
 	headers := in.Request.Headers
@@ -292,7 +309,8 @@ func (a *AuditBroker) LogResponse(ctx context.Context, in *logical.LogInput, hea
 		if len(a.backends) > 0 {
 			e, err := audit.NewEvent(audit.ResponseType)
 			if err != nil {
-				return multierror.Append(retErr, err)
+				retErr = multierror.Append(retErr, err)
+				return retErr.ErrorOrNil()
 			}
 
 			e.Data = in

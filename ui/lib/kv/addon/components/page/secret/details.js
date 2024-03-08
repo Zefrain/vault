@@ -1,6 +1,6 @@
 /**
  * Copyright (c) HashiCorp, Inc.
- * SPDX-License-Identifier: MPL-2.0
+ * SPDX-License-Identifier: BUSL-1.1
  */
 
 import Component from '@glimmer/component';
@@ -11,6 +11,7 @@ import { inject as service } from '@ember/service';
 import { task } from 'ember-concurrency';
 import { waitFor } from '@ember/test-waiters';
 import { isDeleted } from 'kv/utils/kv-deleted';
+import { isAdvancedSecret } from 'core/utils/advanced-secret';
 
 /**
  * @module KvSecretDetails renders the key/value data of a KV secret.
@@ -35,14 +36,13 @@ export default class KvSecretDetails extends Component {
 
   @tracked showJsonView = false;
   @tracked wrappedData = null;
-  secretDataIsAdvanced;
 
   constructor() {
     super(...arguments);
     this.originalSecret = JSON.stringify(this.args.secret.secretData || {});
-    if (this.originalSecret.lastIndexOf('{') > 0) {
-      // Dumb way to check if there's a nested object in the secret
-      this.secretDataIsAdvanced = true;
+    if (isAdvancedSecret(this.originalSecret)) {
+      // Default to JSON view if advanced
+      this.showJsonView = true;
     }
   }
 

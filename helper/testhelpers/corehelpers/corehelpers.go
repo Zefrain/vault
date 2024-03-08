@@ -16,18 +16,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/vault/internal/observability/event"
-
 	"github.com/hashicorp/eventlogger"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/audit"
 	"github.com/hashicorp/vault/builtin/credential/approle"
+	"github.com/hashicorp/vault/internal/observability/event"
 	"github.com/hashicorp/vault/plugins/database/mysql"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/consts"
 	"github.com/hashicorp/vault/sdk/helper/salt"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/mitchellh/go-testing-interface"
+
+	dm "github.com/hashicorp/vault/plugins/database/dm8"
 )
 
 var externalPlugins = []string{"transform", "kmip", "keymgmt"}
@@ -91,8 +92,9 @@ func NewMockBuiltinRegistry() *mockBuiltinRegistry {
 				PluginType:        consts.PluginTypeCredential,
 				DeprecationStatus: consts.PendingRemoval,
 			},
-			"aws":    {PluginType: consts.PluginTypeCredential},
-			"consul": {PluginType: consts.PluginTypeSecrets},
+			"aws":                {PluginType: consts.PluginTypeCredential},
+			"consul":             {PluginType: consts.PluginTypeSecrets},
+			"dm-database-plugin": {PluginType: consts.PluginTypeDatabase},
 		},
 	}
 }
@@ -141,6 +143,8 @@ func (m *mockBuiltinRegistry) Get(name string, pluginType consts.PluginType) (fu
 		}), true
 	case "mysql-database-plugin":
 		return mysql.New(mysql.DefaultUserNameTemplate), true
+	case "dm-database-plugin":
+		return dm.New(dm.DefaultUserNameTemplate), true
 	case "consul":
 		return toFunc(func(ctx context.Context, config *logical.BackendConfig) (logical.Backend, error) {
 			b := new(framework.Backend)
@@ -180,6 +184,7 @@ func (m *mockBuiltinRegistry) Keys(pluginType consts.PluginType) []string {
 			"redshift-database-plugin",
 			"redis-database-plugin",
 			"snowflake-database-plugin",
+			"dm-database-plugin",
 		}
 	case consts.PluginTypeCredential:
 		return []string{
@@ -238,28 +243,32 @@ func NewNoopAudit(config map[string]string) (*NoopAudit, error) {
 		return nil, err
 	}
 
-	n := &NoopAudit{
-		Config: &audit.BackendConfig{
-			SaltView: view,
-			SaltConfig: &salt.Config{
-				HMAC:     sha256.New,
-				HMACType: "hmac-sha256",
-			},
-			Config: config,
+	cfg := &audit.BackendConfig{
+		SaltView: view,
+		SaltConfig: &salt.Config{
+			HMAC:     sha256.New,
+			HMACType: "hmac-sha256",
 		},
+		Config:    config,
+		MountPath: "noop/",
+		Logger:    hclog.NewNullLogger(),
 	}
 
-	cfg, err := audit.NewFormatterConfig()
+	n := &NoopAudit{
+		Config: cfg,
+	}
+
+	formatterCfg, err := audit.NewFormatterConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	f, err := audit.NewEntryFormatter(cfg, n)
+	f, err := audit.NewEntryFormatter(cfg.MountPath, formatterCfg, n, cfg.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("error creating formatter: %w", err)
 	}
 
-	fw, err := audit.NewEntryFormatterWriter(cfg, f, &audit.JSONWriter{})
+	fw, err := audit.NewEntryFormatterWriter(formatterCfg, f, &audit.JSONWriter{})
 	if err != nil {
 		return nil, fmt.Errorf("error creating formatter writer: %w", err)
 	}

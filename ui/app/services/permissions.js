@@ -4,8 +4,13 @@
  */
 
 import Service, { inject as service } from '@ember/service';
+import { sanitizePath, sanitizeStart } from 'core/utils/sanitize-path';
 import { task } from 'ember-concurrency';
 
+export const PERMISSIONS_BANNER_STATES = {
+  readFailed: 'read-failed',
+  noAccess: 'no-ns-access',
+};
 const API_PATHS = {
   access: {
     methods: 'sys/auth',
@@ -64,10 +69,18 @@ export default Service.extend({
   exactPaths: null,
   globPaths: null,
   canViewAll: null,
-  readFailed: false,
+  permissionsBanner: null,
+  chrootNamespace: null,
   store: service(),
   auth: service(),
   namespace: service(),
+
+  get baseNs() {
+    const currentNs = this.namespace.path;
+    return this.chrootNamespace
+      ? `${sanitizePath(this.chrootNamespace)}/${sanitizePath(currentNs)}`
+      : sanitizePath(currentNs);
+  },
 
   getPaths: task(function* () {
     if (this.paths) {
@@ -81,22 +94,36 @@ export default Service.extend({
     } catch (err) {
       // If no policy can be found, default to showing all nav items.
       this.set('canViewAll', true);
-      this.set('readFailed', true);
+      this.set('permissionsBanner', PERMISSIONS_BANNER_STATES.readFailed);
     }
   }),
+
+  calcNsAccess() {
+    if (this.canViewAll) {
+      this.set('permissionsBanner', null);
+      return;
+    }
+    const namespace = this.baseNs;
+    const allowed =
+      Object.keys(this.globPaths).any((k) => k.startsWith(namespace)) ||
+      Object.keys(this.exactPaths).any((k) => k.startsWith(namespace));
+    this.set('permissionsBanner', allowed ? null : PERMISSIONS_BANNER_STATES.noAccess);
+  },
 
   setPaths(resp) {
     this.set('exactPaths', resp.data.exact_paths);
     this.set('globPaths', resp.data.glob_paths);
     this.set('canViewAll', resp.data.root);
-    this.set('readFailed', false);
+    this.set('chrootNamespace', resp.data.chroot_namespace);
+    this.calcNsAccess();
   },
 
   reset() {
     this.set('exactPaths', null);
     this.set('globPaths', null);
     this.set('canViewAll', null);
-    this.set('readFailed', false);
+    this.set('chrootNamespace', null);
+    this.set('permissionsBanner', null);
   },
 
   hasNavPermission(navItem, routeParams, requireAll) {
@@ -124,20 +151,19 @@ export default Service.extend({
   },
 
   pathNameWithNamespace(pathName) {
-    const namespace = this.namespace.path;
+    const namespace = this.baseNs;
     if (namespace) {
-      return `${namespace}/${pathName}`;
+      return `${sanitizePath(namespace)}/${sanitizeStart(pathName)}`;
     } else {
       return pathName;
     }
   },
 
   hasPermission(pathName, capabilities = [null]) {
-    const path = this.pathNameWithNamespace(pathName);
-
     if (this.canViewAll) {
       return true;
     }
+    const path = this.pathNameWithNamespace(pathName);
 
     return capabilities.every(
       (capability) =>
