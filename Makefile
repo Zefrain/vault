@@ -310,6 +310,9 @@ tools-external:
 tools-internal:
 	@$(CURDIR)/tools/tools.sh install-internal
 
+dm-database-plugin:
+	@CGO_ENABLED=0 $(GO_CMD) build -o bin/dm-database-plugin ./plugins/database/dm8/dm-database-plugin
+
 mysql-database-plugin:
 	@CGO_ENABLED=0 $(GO_CMD) build -o bin/mysql-database-plugin ./plugins/database/mysql/mysql-database-plugin
 

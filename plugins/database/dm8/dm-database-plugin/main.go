@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/hashicorp/vault/plugins/database/mysql"
+	plugdm "github.com/hashicorp/vault/plugins/database/dm8"
 	"github.com/hashicorp/vault/sdk/database/dbplugin/v5"
 )
 
@@ -22,7 +22,7 @@ func main() {
 // Run instantiates a MySQL object, and runs the RPC server for the plugin
 func Run() error {
 	var f func() (interface{}, error)
-	f = mysql.New(mysql.DefaultUserNameTemplate)
+	f = plugdm.New(plugdm.DefaultUserNameTemplate)
 
 	dbplugin.ServeMultiplex(f)
 
