@@ -65,6 +65,9 @@ type SealConfig struct {
 
 	// Name is the name provided in the seal configuration to identify the seal
 	Name string `json:"name" mapstructure:"name"`
+
+	// SealMethod assign the encrypt/decrypt method to use (AES_GCM/GMSM4)
+	SealMethod string `json:"seal_method"`
 }
 
 // Validate is used to sanity check the seal configuration

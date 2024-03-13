@@ -166,6 +166,9 @@ type SecurityBarrier interface {
 
 	// SecurityBarrier must provide the encryption APIs
 	BarrierEncryptor
+
+	// Set encrypt method
+	SetCurrentBarrierMethod(method string)
 }
 
 // BarrierStorage is the storage only interface required for a Barrier.
