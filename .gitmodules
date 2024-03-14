@@ -1,0 +1,3 @@
+[submodule "gmsm"]
+	path = gmsm
+	url = https://github.com/tjfoc/gmsm

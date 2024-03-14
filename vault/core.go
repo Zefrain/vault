@@ -1168,11 +1168,12 @@ func NewCore(conf *CoreConfig) (*Core, error) {
 		}
 	}
 
-	// Construct a new AES-GCM barrier
+	// Construct a new AES-GCM/SM4 barrier
 	c.barrier, err = NewAESGCMBarrier(c.physical)
 	if err != nil {
 		return nil, fmt.Errorf("barrier setup failed: %w", err)
 	}
+	c.barrier.SetCurrentBarrierMethod(conf.RawConfig.EncryptMethod)
 
 	err = storedLicenseCheck(c, conf)
 	if err != nil {

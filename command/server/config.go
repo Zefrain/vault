@@ -120,6 +120,8 @@ type Config struct {
 	License          string `hcl:"-"`
 	LicensePath      string `hcl:"license_path"`
 	DisableSSCTokens bool   `hcl:"-"`
+
+	EncryptMethod string `hcl:"encrypt_method"`
 }
 
 const (
@@ -583,6 +585,13 @@ func ParseConfig(d, source string) (*Config, error) {
 	result := NewConfig()
 	if err := hcl.DecodeObject(result, obj); err != nil {
 		return nil, err
+	}
+
+	// encrypt method (sm4/aes_gcm_v1/aes_gcm_v2)
+	if rendered, err := configutil.ParseSingleIPTemplate(result.EncryptMethod); err != nil {
+		return nil, err
+	} else {
+		result.EncryptMethod = rendered
 	}
 
 	if rendered, err := configutil.ParseSingleIPTemplate(result.APIAddr); err != nil {
