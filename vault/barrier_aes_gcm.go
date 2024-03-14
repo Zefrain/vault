@@ -35,7 +35,8 @@ const (
 	initialKeyTerm = 1
 
 	// termSize the number of bytes used for the key term.
-	termSize = 4
+	termSize   = 4
+	SM4KeySize = 16
 
 	autoRotateCheckInterval = 5 * time.Minute
 	legacyRotateReason      = "legacy rotation"
@@ -80,7 +81,8 @@ type AESGCMBarrier struct {
 	keyring *Keyring
 
 	// cache is used to reduce the number of AEAD constructions we do
-	cache     map[uint32]cipher.AEAD
+	cache map[uint32]cipher.AEAD
+
 	cacheLock sync.RWMutex
 
 	// currentBarrierMethod is prefixed to a message to allow for
@@ -252,8 +254,8 @@ func (b *AESGCMBarrier) persistKeyringInternal(ctx context.Context, keyring *Key
 		return fmt.Errorf("failed to retrieve AES-GCM AEAD from root key: %w", err)
 	}
 
-	// NOTE: Not sure whether it's secure if set keyring here
-	b.rootKey = keyring.rootKey
+	// set initial key for keyring
+	b.rootKey = keyring.RootKey()
 
 	// Encrypt the barrier init value
 	value, err := b.encrypt(keyringPath, initialKeyTerm, gcm, keyringBuf)
@@ -834,6 +836,7 @@ func (b *AESGCMBarrier) Put(ctx context.Context, entry *logical.StorageEntry) er
 	}
 
 	term := b.keyring.ActiveTerm()
+	b.sm4keyFromTerm(term)
 	primary, err := b.aeadForTerm(term)
 	b.l.RUnlock()
 	if err != nil {
@@ -956,21 +959,24 @@ func (b *AESGCMBarrier) List(ctx context.Context, prefix string) ([]string, erro
 // Get key from term
 func (b *AESGCMBarrier) sm4keyFromTerm(term uint32) ([]byte, error) {
 	var err error
+	var key []byte
+
 	// Check for the keyring
 	keyring := b.keyring
-	if keyring == nil {
-		return b.rootKey[:16], nil
-	}
 
 	// Read the underlying key
-	key := keyring.TermKey(term)
-	if key == nil {
-		err = fmt.Errorf("read key from term failed")
-		// return nil, err
-		return []byte(nil), nil
+	if keyring == nil {
+		key = b.rootKey[:16]
+	} else {
+		key = keyring.TermKey(term).Value[:16]
 	}
 
-	return key.Value[:16], err
+	if key == nil {
+		err = fmt.Errorf("read key from term failed")
+		return nil, err
+	}
+
+	return key, err
 }
 
 // aeadForTerm returns the AES-GCM AEAD for the given term
@@ -978,7 +984,7 @@ func (b *AESGCMBarrier) aeadForTerm(term uint32) (cipher.AEAD, error) {
 	// Check for the keyring
 	keyring := b.keyring
 	if keyring == nil {
-		return nil, nil
+		return nil, fmt.Errorf("key is nil")
 	}
 
 	// Check the cache for the aead
@@ -992,7 +998,7 @@ func (b *AESGCMBarrier) aeadForTerm(term uint32) (cipher.AEAD, error) {
 	// Read the underlying key
 	key := keyring.TermKey(term)
 	if key == nil {
-		return nil, nil
+		return nil, fmt.Errorf("key is nil")
 	}
 
 	// Create a new aead
@@ -1030,19 +1036,10 @@ func (b *AESGCMBarrier) encrypt(path string, term uint32, gcm cipher.AEAD, plain
 		var err error
 		var key []byte
 
-		// // Set 1 if is rootKey
-		// if b.keyring == nil {
-		// 	key = b.rootKey[:16]
-		// 	out[5] = 1
-		// } else {
-		// 	key, err = b.sm4keyFromTerm(term)
-		// 	out[5] = 0
-		// }
-
 		key, err = b.sm4keyFromTerm(term)
 		enc, err := sm4.Sm4Ecb(key, plain, true)
 
-		size := termSize + 1 + len(enc)
+		size := termSize + 1 + SM4KeySize + len(enc)
 		out := make([]byte, size)
 
 		// Set the key term
@@ -1051,14 +1048,18 @@ func (b *AESGCMBarrier) encrypt(path string, term uint32, gcm cipher.AEAD, plain
 		// Set encrypt method
 		out[4] = b.currentBarrierMethod
 
+		// Append Key
+		copy(out[4+1:], key)
+
 		// Append encrypted data
-		copy(out[5:], enc)
+		copy(out[4+1+SM4KeySize:], enc)
 
 		// fmt.Printf("========= encrypt ===============>\n")
 		// fmt.Printf("key: %v\n", key[:16])
 		// fmt.Printf("plain: %v\n", plain)
 		// fmt.Printf("enc: %v\n", enc)
-		// fmt.Printf("out: %v\n", out)
+		// fmt.Printf("cipher: %v\n", out)
+
 		return out, err
 	} else {
 		// Allocate the output buffer with room for tern, version byte,
@@ -1107,53 +1108,6 @@ func (b *AESGCMBarrier) encrypt(path string, term uint32, gcm cipher.AEAD, plain
 	}
 }
 
-// // encrypt is used to encrypt a value
-// func (b *AESGCMBarrier) encrypt(path string, term uint32, gcm cipher.AEAD, plain []byte) ([]byte, error) {
-// 	// Allocate the output buffer with room for tern, version byte,
-// 	// nonce, GCM tag and the plaintext
-
-// 	extra := termSize + 1 + gcm.NonceSize() + gcm.Overhead()
-// 	if len(plain) > math.MaxInt-extra {
-// 		return nil, ErrPlaintextTooLarge
-// 	}
-
-// 	capacity := len(plain) + extra
-// 	size := termSize + 1 + gcm.NonceSize()
-// 	out := make([]byte, size, capacity)
-
-// 	// Set the key term
-// 	binary.BigEndian.PutUint32(out[:4], term)
-
-// 	// Set the version byte
-// 	out[4] = b.currentBarrierMethod
-
-// 	// Generate a random nonce
-// 	nonce := out[5 : 5+gcm.NonceSize()]
-// 	n, err := rand.Read(nonce)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	if n != len(nonce) {
-// 		return nil, errors.New("unable to read enough random bytes to fill gcm nonce")
-// 	}
-
-// 	// Seal the output
-// 	switch b.currentBarrierMethod {
-// 	case AESGCMVersion1:
-// 		out = gcm.Seal(out, nonce, plain, nil)
-// 	case AESGCMVersion2:
-// 		aad := []byte(nil)
-// 		if path != "" {
-// 			aad = []byte(path)
-// 		}
-// 		out = gcm.Seal(out, nonce, plain, aad)
-// 	default:
-// 		panic("Unknown AESGCM version")
-// 	}
-
-// 	return out, nil
-// }
-
 func termLabel(term uint32) []metrics.Label {
 	return []metrics.Label{
 		{
@@ -1169,21 +1123,18 @@ func (b *AESGCMBarrier) decrypt(path string, gcm cipher.AEAD, cipher []byte) ([]
 		return nil, fmt.Errorf("invalid cipher length")
 	}
 
-	term := binary.BigEndian.Uint32(cipher[:4])
+	// term := binary.BigEndian.Uint32(cipher[:4])
 
 	if cipher[4] == GMSM4Version1 {
 		var key []byte
 		var err error
 
-		// // Whether key is rootkey
-		// if cipher[5] == 1 {
-		// 	key = b.rootKey[:16]
-		// } else {
-		// 	key, err = b.sm4keyFromTerm(term)
-		// }
+		key = make([]byte, SM4KeySize)
+		copy(key, cipher[4+1:4+1+SM4KeySize])
 
-		key, err = b.sm4keyFromTerm(term)
-		out, err := sm4.Sm4Ecb(key, cipher[5:], false)
+		// key, err = b.sm4keyFromTerm(term)
+
+		out, err := sm4.Sm4Ecb(key, cipher[5+SM4KeySize:], false)
 		if err != nil {
 			return nil, err
 		}
@@ -1218,31 +1169,6 @@ func (b *AESGCMBarrier) decrypt(path string, gcm cipher.AEAD, cipher []byte) ([]
 		}
 	}
 }
-
-// // decrypt is used to decrypt a value using the keyring
-// func (b *AESGCMBarrier) decrypt(path string, gcm cipher.AEAD, cipher []byte) ([]byte, error) {
-// 	if len(cipher) < 5+gcm.NonceSize() {
-// 		return nil, fmt.Errorf("invalid cipher length")
-// 	}
-// 	// Capture the parts
-// 	nonce := cipher[5 : 5+gcm.NonceSize()]
-// 	raw := cipher[5+gcm.NonceSize():]
-// 	out := make([]byte, 0, len(raw)-gcm.NonceSize())
-
-// 	// Attempt to open
-// 	switch cipher[4] {
-// 	case AESGCMVersion1:
-// 		return gcm.Open(out, nonce, raw, nil)
-// 	case AESGCMVersion2:
-// 		aad := []byte(nil)
-// 		if path != "" {
-// 			aad = []byte(path)
-// 		}
-// 		return gcm.Open(out, nonce, raw, aad)
-// 	default:
-// 		return nil, fmt.Errorf("version bytes mis-match")
-// 	}
-// }
 
 // Encrypt is used to encrypt in-memory for the BarrierEncryptor interface
 func (b *AESGCMBarrier) Encrypt(ctx context.Context, key string, plaintext []byte) ([]byte, error) {
